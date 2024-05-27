@@ -1,18 +1,12 @@
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
-
-
-def find_brightest_points(image):
-    # Находим индексы самых ярких точек в изображении
-    brightest_points = np.argwhere(image > image.min() * 1.05)
-    return brightest_points
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+from skimage.filters import threshold_otsu
+from skimage.measure import find_contours
 
 
 def read_tif_stack(file_path):
-    # Чтение многослойного TIFF файла
     image_stack = Image.open(file_path)
     frames = []
     try:
@@ -25,60 +19,91 @@ def read_tif_stack(file_path):
     return np.array(frames)
 
 
-def extract_channels(image_stack):
+def find_stem_contour(image):
+    thresh = threshold_otsu(image)
+    binary = image > thresh
+    contours = find_contours(binary, level=0.5)
+    if contours:
+        contour = max(contours, key=len)  # Выбрать самый длинный контур
+        return contour
+    return None
+
+
+def extract_channels(image_stack, z_distance=0.05):
     channels = []
-    min_val = image_stack.min() * 1.05
     intensities = []
     for z, image in enumerate(image_stack):
-        points = find_brightest_points(image)
-        for point in points:
-            x, y = point
-            if image[x, y] > min_val:
-                channels.append((x, y, z))
-                intensities.append(image[x, y])
+        print(f"Processing frame {z + 1}/{len(image_stack)}")
+        contour = find_stem_contour(image)
+        if contour is not None:
+            for point in contour:
+                x, y = point
+                channels.append((x, y, z * z_distance))  # Distance between layers
+                intensities.append(image[int(x), int(y)])
+        else:
+            print(f"No contour found for frame {z + 1}")
     return channels, intensities
 
 
-def plot_3d_channels(channels, intensities):
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+def plot_3d_channels_interactive(channels, intensities, x_range, y_range, z_range):
+    x_coords = np.array([p[0] for p in channels], dtype=np.float32)
+    y_coords = np.array([p[1] for p in channels], dtype=np.float32)
+    z_coords = np.array([p[2] for p in channels], dtype=np.float32)
+    intensities = np.array(intensities, dtype=np.float32)
 
-    x_coords = [p[0] for p in channels]
-    y_coords = [p[1] for p in channels]
-    z_coords = [p[2] for p in channels]
+    fig = make_subplots(rows=1, cols=1, specs=[[{'type': 'scatter3d'}]])
 
-    # Нормализуем интенсивности для использования в цветовой карте
-    norm = plt.Normalize(min(intensities), max(intensities))
-    colors = cm.viridis(norm(intensities))
+    trace = go.Scatter3d(
+        x=x_coords, y=y_coords, z=z_coords,
+        mode='markers',
+        marker=dict(
+            size=2,
+            color=intensities,
+            colorscale='Viridis',
+            opacity=0.8
+        )
+    )
 
-    ax.scatter(x_coords, y_coords, z_coords, c=colors, marker='o')
+    fig.add_trace(trace)
 
-    ax.set_xlabel('X axis')
-    ax.set_ylabel('Y axis')
-    ax.set_zlabel('Z axis')
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(
+                title='X axis',
+                range=x_range
+            ),
+            yaxis=dict(
+                title='Y axis',
+                range=y_range
+            ),
+            zaxis=dict(
+                title='Z axis',
+                range=z_range
+            )
+        )
+    )
 
-    plt.show()
-
-
-def plot_image_slices(image_stack):
-    num_slices = len(image_stack)
-    print(f'num slices: {num_slices}')
-    fig, axes = plt.subplots(1, num_slices // 50, figsize=(50, 15))
-    for i in range(0, num_slices-50, 50):
-        ax = axes[i // 50]
-        # Преобразуем изображение в float, чтобы поддерживать NaN
-        image = image_stack[i].astype(float)
-        image[image <= image.min() * 1.05] = np.nan  # Устанавливаем минимальные значения как NaN
-        ax.imshow(image, cmap='gray', vmin=np.nanmin(image_stack), vmax=np.nanmax(image_stack))
-        ax.axis('off')  # Отключаем оси для лучшего восприятия
-    plt.show()
+    fig.show()
 
 
 def main(file_path):
     image_stack = read_tif_stack(file_path)
+
+    if image_stack.size == 0:
+        print("Error: The image stack is empty or could not be read.")
+        return
+
+    x_range = [160, 300]  # Scale for X axis
+    y_range = [160, 300]  # Scale for Y axis
+    z_range = [0, len(image_stack) * 0.05]  # Scale for Z axis (z_distance * number of frames)
+
     channels, intensities = extract_channels(image_stack)
-    plot_3d_channels(channels, intensities)
-    plot_image_slices(image_stack)
+
+    if len(channels) == 0:
+        print("No channels found.")
+        return
+
+    plot_3d_channels_interactive(channels, intensities, x_range, y_range, z_range)
 
 
 if __name__ == "__main__":
