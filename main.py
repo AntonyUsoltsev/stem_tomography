@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image
 import plotly.graph_objs as go
+from matplotlib import pyplot as plt
 from plotly.subplots import make_subplots
 from skimage.filters import threshold_otsu
 from skimage.measure import find_contours
@@ -8,8 +9,7 @@ from sklearn.cluster import KMeans
 
 
 def find_brightest_points(image):
-    brightest_points = np.argwhere(image > image.max() * 0.95)
-    print(f'brightest_points: {brightest_points.size} ')
+    brightest_points = np.argwhere(image > image.max() * 0.955)
     return brightest_points
 
 
@@ -31,8 +31,25 @@ def find_stem_contour(image):
     binary = image > thresh
     contours = find_contours(binary, level=0.5)
     if contours:
-        contour = max(contours, key=len)  # Выбрать самый длинный контур
+        contour = max(contours, key=len)
+
+        # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+        # ax = axes.ravel()
+        #
+        # ax[0].imshow(image, cmap=plt.cm.gray)
+        # ax[0].set_title('Original Image')
+        # ax[0].axis('off')
+        #
+        # ax[1].imshow(binary, cmap=plt.cm.gray)
+        # if contour is not None:
+        #     ax[1].plot(contour[:, 1], contour[:, 0], linewidth=2, color='red')
+        # ax[1].set_title('Binary Image with Contour')
+        # ax[1].axis('off')
+        #
+        # plt.tight_layout()
+        # plt.show()
         return contour
+
     return None
 
 
@@ -46,7 +63,7 @@ def clustering(image_stack, z_distance=0.05):
     points_list = np.array(points_list)
 
     # Clustering points by x and y coordinates
-    kmeans = KMeans(n_clusters=120)  # Adjust the number of clusters as needed
+    kmeans = KMeans(n_clusters=150)
     kmeans.fit(points_list[:, :2])
     labels = kmeans.predict(points_list[:, :2])
 
@@ -76,8 +93,7 @@ def clustering(image_stack, z_distance=0.05):
 def extract_channels_with_curves(image_stack, z_distance=0.05):
     channels = []
     intensities = []
-    # curves = clustering(image_stack)
-    curves =[]
+    curves = clustering(image_stack)
     for z, image in enumerate(image_stack):
         print(f"Processing frame {z + 1}/{len(image_stack)}")
         print(f'image №{z}: max val = {image.max()}, min val = {image.min()}')
