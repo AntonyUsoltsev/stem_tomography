@@ -6,6 +6,12 @@ from skimage.filters import threshold_otsu
 from skimage.measure import find_contours
 
 
+def find_brightest_points(image):
+    brightest_points = np.argwhere(image > image.min() * 1.8)
+    print(f'brightest_points: {brightest_points.size} ')
+    return brightest_points
+
+
 def read_tif_stack(file_path):
     image_stack = Image.open(file_path)
     frames = []
@@ -42,6 +48,13 @@ def extract_channels(image_stack, z_distance=0.05):
                 intensities.append(image[int(x), int(y)])
         else:
             print(f"No contour found for frame {z + 1}")
+
+        points = find_brightest_points(image)
+        for point in points:
+            x, y = point
+            channels.append((x, y, z * z_distance))
+            intensities.append(image[int(x), int(y)])
+
     return channels, intensities
 
 
